@@ -1,0 +1,35 @@
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE events (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  date DATE NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE chores (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  frequency INTEGER NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT false,
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE
+);
+
+CREATE TABLE lists (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at DATE NOT NULL DEFAULT current_timestamp,
+  updated_at DATE NOT NULL DEFAULT current_timestamp
+);
+
+CREATE TABLE list_items (
+  id INTEGER PRIMARY KEY,
+  text TEXT NOT NULL,
+  completed BOOLEAN NOT NULL DEFAULT false,
+  list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE
+);
+
