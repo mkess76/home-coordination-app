@@ -2,87 +2,199 @@ const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 
-// Create a new Express app
 const app = express();
 
-// Set up CORS
+// Middleware
 app.use(cors());
+app.use(express.json());
 
-// Set up the SQLite database
-const db = new sqlite3.Database('mydatabase.db');
+// Database
+const db = new sqlite3.Database('./family.db', (err) => {
+  if (err) {
+    console.error('Database connection error:', err);
+  } else {
+    console.log('✅ Connected to SQLite database');
+  }
+});
 
-// Define the REST endpoints for the APIs
+// ===== USERS API =====
 app.get('/api/users', (req, res) => {
-  // Query the users table in the database
-  const users = db.all(`SELECT * FROM users`);
-  
-  // Return the result as JSON
-  res.json(users);
+  db.all('SELECT * FROM users', [], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(rows);
+    }
+  });
+});
+
+app.post('/api/users', (req, res) => {
+  const { name, color, profile_image } = req.body;
+  db.run(
+    'INSERT INTO users (name, color, profile_image, role) VALUES (?, ?, ?, ?)',
+    [name, color, profile_image || null, 'member'],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID, name, color });
+      }
+    }
+  );
+});
+
+// ===== EVENTS API =====
+app.get('/api/events', (req, res) => {
+  db.all('SELECT * FROM events ORDER BY start_time', [], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(rows);
+    }
+  });
+});
+
+app.get('/api/events/today', (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  db.all(
+    'SELECT * FROM events WHERE DATE(start_time) = ? ORDER BY start_time',
+    [today],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json(rows);
+      }
+    }
+  );
 });
 
 app.post('/api/events', (req, res) => {
-  // Insert a new event into the database
-  db.run(`INSERT INTO events (title, description, start_date, end_date) VALUES (?, ?, ?, ?)`, [req.body.title, req.body.description, req.body.startDate, req.body.endDate], (err) => {
+  const { user_id, title, description, start_time, end_time, all_day, location } = req.body;
+  db.run(
+    'INSERT INTO events (user_id, title, description, start_time, end_time, all_day, location) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [user_id, title, description, start_time, end_time, all_day ? 1 : 0, location],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID, message: 'Event created' });
+      }
+    }
+  );
+});
+
+// ===== CHORES API =====
+app.get('/api/chores', (req, res) => {
+  db.all('SELECT * FROM chores ORDER BY due_date', [], (err, rows) => {
     if (err) {
-      console.error(err);
-      res.status(500).send('Failed to insert event');
+      res.status(500).json({ error: err.message });
     } else {
-      res.json({ message: 'Event inserted successfully' });
+      res.json(rows);
     }
   });
 });
 
-app.get('/api/events', (req, res) => {
-  // Query the events table in the database
-  const events = db.all(`SELECT * FROM events`);
-  
-  // Return the result as JSON
-  res.json(events);
+app.get('/api/chores/today', (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  db.all(
+    'SELECT * FROM chores WHERE DATE(due_date) = ? ORDER BY due_date',
+    [today],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json(rows);
+      }
+    }
+  );
 });
 
 app.post('/api/chores', (req, res) => {
-  // Insert a new chore into the database
-  db.run(`INSERT INTO chores (title, description, due_date) VALUES (?, ?, ?)`, [req.body.title, req.body.description, req.body.dueDate], (err) => {
-    if (err) {
-      console.error(err);
-      res.status(500).send('Failed to insert chore');
-    } else {
-      res.json({ message: 'Chore inserted successfully' });
+  const { user_id, title, description, due_date, recurring } = req.body;
+  db.run(
+    'INSERT INTO chores (user_id, title, description, due_date, recurring, completed, stars_earned) VALUES (?, ?, ?, ?, ?, 0, 0)',
+    [user_id, title, description, due_date, recurring || 'none'],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID, message: 'Chore created' });
+      }
     }
-  });
+  );
 });
 
-app.get('/api/chores', (req, res) => {
-  // Query the chores table in the database
-  const chores = db.all(`SELECT * FROM chores`);
-  
-  // Return the result as JSON
-  res.json(chores);
+app.patch('/api/chores/:id/complete', (req, res) => {
+  const { id } = req.params;
+  db.run(
+    'UPDATE chores SET completed = 1, stars_earned = stars_earned + 1 WHERE id = ?',
+    [id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ message: 'Chore completed', changes: this.changes });
+      }
+    }
+  );
+});
+
+// ===== LISTS API =====
+app.get('/api/lists', (req, res) => {
+  db.all('SELECT * FROM lists', [], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.json(rows);
+    }
+  });
 });
 
 app.post('/api/lists', (req, res) => {
-  // Insert a new list into the database
-  db.run(`INSERT INTO lists (title, description) VALUES (?, ?)`, [req.body.title, req.body.description], (err) => {
+  const { name, type } = req.body;
+  db.run(
+    'INSERT INTO lists (name, type) VALUES (?, ?)',
+    [name, type || 'general'],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID, message: 'List created' });
+      }
+    }
+  );
+});
+
+app.get('/api/lists/:id/items', (req, res) => {
+  const { id } = req.params;
+  db.all('SELECT * FROM list_items WHERE list_id = ?', [id], (err, rows) => {
     if (err) {
-      console.error(err);
-      res.status(500).send('Failed to insert list');
+      res.status(500).json({ error: err.message });
     } else {
-      res.json({ message: 'List inserted successfully' });
+      res.json(rows);
     }
   });
 });
 
-app.get('/api/lists', (req, res) => {
-  // Query the lists table in the database
-  const lists = db.all(`SELECT * FROM lists`);
-  
-  // Return the result as JSON
-  res.json(lists);
+app.post('/api/lists/:id/items', (req, res) => {
+  const { id } = req.params;
+  const { text, added_by } = req.body;
+  db.run(
+    'INSERT INTO list_items (list_id, text, completed, added_by) VALUES (?, ?, 0, ?)',
+    [id, text, added_by],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+      } else {
+        res.json({ id: this.lastID, message: 'Item added' });
+      }
+    }
+  );
 });
 
-// Start the server on port 3001
+// Start server
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
-
