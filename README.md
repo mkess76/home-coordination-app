@@ -37,9 +37,24 @@ To get started with the Home Coordination App, follow these steps:
      - `GOOGLE_CLIENT_SECRET=your_google_client_secret`
      - `GOOGLE_REDIRECT_URI=http://localhost:3001/api/google/oauth/callback`
      - `APP_BASE_URL=http://localhost:3000`
+     - `ALLOWED_ORIGINS=http://localhost:3000`
 5. Start the app:
    - Backend: `cd server && npm start`
    - Frontend (new terminal): `npm start`
+
+Production Deployment (`home.rancherlab.org`)
+---------------------------------------------
+- Build and run the included Docker image (single container serves both API and frontend):
+  - `docker build -t home-coordination-app .`
+  - `docker run -p 3001:3001 --env-file .env home-coordination-app`
+- Set production env values:
+  - `APP_BASE_URL=https://home.rancherlab.org`
+  - `GOOGLE_REDIRECT_URI=https://home.rancherlab.org/api/google/oauth/callback`
+  - `ALLOWED_ORIGINS=https://home.rancherlab.org`
+- In Google Cloud OAuth settings, add:
+  - Authorized JavaScript origin: `https://home.rancherlab.org`
+  - Authorized redirect URI: `https://home.rancherlab.org/api/google/oauth/callback`
+- In Rancher/Ingress, route `https://home.rancherlab.org` to container port `3001`.
 
 Usage Guide
 -----------

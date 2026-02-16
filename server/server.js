@@ -3,6 +3,8 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const https = require('https');
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
 
 require('dotenv').config();
 
@@ -19,9 +21,32 @@ const GOOGLE_SCOPES = [
   'email',
   'https://www.googleapis.com/auth/calendar.readonly',
 ];
+const HOST = process.env.HOST || '0.0.0.0';
+const PORT = process.env.PORT || 3001;
+const CLIENT_BUILD_PATH = path.resolve(__dirname, '..', 'build');
+const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:3000', APP_BASE_URL];
+const ALLOWED_ORIGINS = [
+  ...new Set(
+    (process.env.ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+      .concat(DEFAULT_ALLOWED_ORIGINS)
+  ),
+];
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+  })
+);
 app.use(express.json());
 
 // Database
@@ -716,12 +741,18 @@ app.post('/api/lists/:id/items', (req, res) => {
   );
 });
 
+if (fs.existsSync(path.join(CLIENT_BUILD_PATH, 'index.html'))) {
+  app.use(express.static(CLIENT_BUILD_PATH));
+  app.get(/^\/(?!api\/).*/, (req, res) => {
+    res.sendFile(path.join(CLIENT_BUILD_PATH, 'index.html'));
+  });
+}
+
 // Start server
-const PORT = process.env.PORT || 3001;
 ensureCalendarSchema()
   .then(() => {
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    app.listen(PORT, HOST, () => {
+      console.log(`🚀 Server running on ${HOST}:${PORT}`);
     });
   })
   .catch((error) => {
