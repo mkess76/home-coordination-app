@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import './App.css';
 
 function formatDate(dateValue) {
@@ -30,10 +30,11 @@ function App() {
   const [events, setEvents] = useState([]);
   const [chores, setChores] = useState([]);
   const [statusMessage, setStatusMessage] = useState('Local data loaded');
-  const [googleToken, setGoogleToken] = useState('');
+  const [googleEmail, setGoogleEmail] = useState('');
   const [googleConnected, setGoogleConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const tokenClientRef = useRef(null);
+
+  const activeUserId = useMemo(() => users[0]?.id || 1, [users]);
 
   const fetchHomeData = async () => {
     try {
@@ -67,73 +68,46 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
-    if (!googleClientId) {
-      setStatusMessage('Set REACT_APP_GOOGLE_CLIENT_ID to enable Google Calendar');
-      return undefined;
+    const params = new URLSearchParams(window.location.search);
+    const authStatus = params.get('google');
+    if (authStatus === 'connected') {
+      setStatusMessage('Google Calendar connected');
+    } else if (authStatus === 'error') {
+      setStatusMessage('Google authentication failed');
     }
-
-    const existingScript = document.querySelector('script[data-google-identity="true"]');
-    if (existingScript && window.google?.accounts?.oauth2) {
-      tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-        client_id: googleClientId,
-        scope: 'https://www.googleapis.com/auth/calendar.readonly',
-        callback: (tokenResponse) => {
-          if (tokenResponse?.access_token) {
-            setGoogleToken(tokenResponse.access_token);
-            setGoogleConnected(true);
-            setStatusMessage('Google Calendar connected');
-          }
-        },
-      });
-      return undefined;
+    if (authStatus) {
+      params.delete('google');
+      const query = params.toString();
+      const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      window.history.replaceState({}, '', nextUrl);
     }
-
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.dataset.googleIdentity = 'true';
-    script.onload = () => {
-      if (!window.google?.accounts?.oauth2) {
-        setStatusMessage('Google Identity Services failed to initialize');
-        return;
-      }
-
-      tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-        client_id: googleClientId,
-        scope: 'https://www.googleapis.com/auth/calendar.readonly',
-        callback: (tokenResponse) => {
-          if (tokenResponse?.access_token) {
-            setGoogleToken(tokenResponse.access_token);
-            setGoogleConnected(true);
-            setStatusMessage('Google Calendar connected');
-          }
-        },
-      });
-    };
-    script.onerror = () => {
-      setStatusMessage('Could not load Google Identity script');
-    };
-
-    document.body.appendChild(script);
-    return () => {
-      script.onerror = null;
-      script.onload = null;
-    };
   }, []);
 
-  const handleConnectGoogle = () => {
-    if (!tokenClientRef.current) {
-      setStatusMessage('Google auth is still loading. Try again in a moment.');
-      return;
-    }
+  useEffect(() => {
+    if (!activeUserId) return;
+    const fetchGoogleStatus = async () => {
+      try {
+        const response = await fetch(`/api/google/oauth/status?user_id=${activeUserId}`);
+        if (!response.ok) {
+          throw new Error('Google status endpoint failed');
+        }
+        const payload = await response.json();
+        setGoogleConnected(Boolean(payload.connected));
+        setGoogleEmail(payload.email || '');
+      } catch (error) {
+        console.error('Failed to fetch Google OAuth status:', error);
+      }
+    };
 
-    tokenClientRef.current.requestAccessToken({ prompt: 'consent' });
+    fetchGoogleStatus();
+  }, [activeUserId]);
+
+  const handleConnectGoogle = () => {
+    window.location.assign(`/api/google/oauth/start?user_id=${activeUserId}`);
   };
 
   const handleSyncGoogleCalendar = async () => {
-    if (!googleToken) {
+    if (!googleConnected) {
       setStatusMessage('Connect Google Calendar first');
       return;
     }
@@ -143,10 +117,9 @@ function App() {
       const syncResponse = await fetch('/api/google-calendar/sync', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${googleToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ user_id: users[0]?.id || 1 }),
+        body: JSON.stringify({ user_id: activeUserId }),
       });
 
       if (!syncResponse.ok) {
@@ -199,6 +172,7 @@ function App() {
               {isSyncing ? 'Syncing...' : 'Sync Next 30 Days'}
             </button>
             <p className="status-line">{statusMessage}</p>
+            {googleConnected && googleEmail ? <p className="status-line">Connected as {googleEmail}</p> : null}
           </div>
         </header>
 

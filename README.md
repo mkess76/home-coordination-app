@@ -28,10 +28,15 @@ To get started with the Home Coordination App, follow these steps:
    - Frontend: `npm install`
    - Backend: `cd server && npm install`
 4. Configure Google Calendar (optional but recommended):
-   - Create an OAuth Web client in Google Cloud.
+   - Create an OAuth Web client in Google Cloud and enable Google Calendar API.
    - Add `http://localhost:3000` as an authorized JavaScript origin.
+   - Add `http://localhost:3001/api/google/oauth/callback` as an authorized redirect URI.
    - In the root project folder, create `.env` with:
      - `REACT_APP_GOOGLE_CLIENT_ID=your_google_oauth_client_id`
+     - `GOOGLE_CLIENT_ID=your_google_oauth_client_id`
+     - `GOOGLE_CLIENT_SECRET=your_google_client_secret`
+     - `GOOGLE_REDIRECT_URI=http://localhost:3001/api/google/oauth/callback`
+     - `APP_BASE_URL=http://localhost:3000`
 5. Start the app:
    - Backend: `cd server && npm start`
    - Frontend (new terminal): `npm start`
@@ -48,11 +53,20 @@ The Home Coordination App provides an API for custom integrations and automation
 
 Google Calendar Endpoints
 -------------------------
+- `GET /api/google/oauth/start?user_id=1`:
+  - Starts the server-side Google OAuth authorization-code flow.
+- `GET /api/google/oauth/callback`:
+  - OAuth callback endpoint used by Google.
+- `GET /api/google/oauth/status?user_id=1`:
+  - Returns whether Google Calendar is connected for the selected user.
+- `POST /api/google/oauth/disconnect`:
+  - Body: `{ "user_id": 1 }`
+  - Removes stored Google tokens for that user.
 - `GET /api/google-calendar/events`:
-  - Requires `Authorization: Bearer <google_access_token>`
-  - Returns normalized Google events (read-only fetch).
+  - Uses stored OAuth token by `user_id` query parameter (or bearer token fallback).
+  - Returns normalized Google events.
 - `POST /api/google-calendar/sync`:
-  - Requires `Authorization: Bearer <google_access_token>`
+  - Uses stored OAuth token by `user_id`.
   - Imports and updates Google events into local SQLite `events` table.
   - Optional body fields: `calendarId`, `timeMin`, `timeMax`, `user_id`
 
