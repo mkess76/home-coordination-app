@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './App.css';
 
+const USER_COLOR_OPTIONS = ['#EC4899', '#3B82F6', '#10B981', '#F59E0B', '#14B8A6', '#F97316'];
+
 function formatDate(dateValue) {
   if (!dateValue) return 'No date';
   const parsed = new Date(dateValue);
@@ -33,8 +35,18 @@ function App() {
   const [googleEmail, setGoogleEmail] = useState('');
   const [googleConnected, setGoogleConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserColor, setNewUserColor] = useState(USER_COLOR_OPTIONS[0]);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
 
-  const activeUserId = useMemo(() => users[0]?.id || 1, [users]);
+  const activeUser = useMemo(() => {
+    if (!users.length) return null;
+    if (!selectedUserId) return users[0];
+    return users.find((user) => user.id === selectedUserId) || users[0];
+  }, [users, selectedUserId]);
+
+  const activeUserId = activeUser?.id || null;
 
   const fetchHomeData = async () => {
     try {
@@ -57,6 +69,12 @@ function App() {
       setUsers(usersData);
       setEvents(eventsData);
       setChores(choresData);
+      setSelectedUserId((currentSelected) => {
+        if (currentSelected && usersData.some((user) => user.id === currentSelected)) {
+          return currentSelected;
+        }
+        return usersData[0]?.id || null;
+      });
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       setStatusMessage('Failed to load all data from server');
@@ -84,7 +102,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!activeUserId) return;
+    if (!activeUserId) {
+      setGoogleConnected(false);
+      setGoogleEmail('');
+      return;
+    }
     const fetchGoogleStatus = async () => {
       try {
         const response = await fetch(`/api/google/oauth/status?user_id=${activeUserId}`);
@@ -103,10 +125,58 @@ function App() {
   }, [activeUserId]);
 
   const handleConnectGoogle = () => {
+    if (!activeUserId) {
+      setStatusMessage('Create or select a user first');
+      return;
+    }
     window.location.assign(`/api/google/oauth/start?user_id=${activeUserId}`);
   };
 
+  const handleCreateUser = async (event) => {
+    event.preventDefault();
+    const trimmedName = newUserName.trim();
+    if (!trimmedName) {
+      setStatusMessage('Enter a user name to sign up');
+      return;
+    }
+
+    setIsCreatingUser(true);
+    try {
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: trimmedName,
+          color: newUserColor,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('User creation failed');
+      }
+
+      const createdUser = await response.json();
+      await fetchHomeData();
+      setSelectedUserId(createdUser.id);
+      setNewUserName('');
+      setNewUserColor(USER_COLOR_OPTIONS[createdUser.id % USER_COLOR_OPTIONS.length]);
+      setStatusMessage(`User ${createdUser.name} created. Connect Google Calendar next.`);
+    } catch (error) {
+      console.error('User creation failed:', error);
+      setStatusMessage('User signup failed');
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
   const handleSyncGoogleCalendar = async () => {
+    if (!activeUserId) {
+      setStatusMessage('Create or select a user first');
+      return;
+    }
+
     if (!googleConnected) {
       setStatusMessage('Connect Google Calendar first');
       return;
@@ -165,12 +235,55 @@ function App() {
             <p className="subtitle">Track schedules, chores, and Google Calendar events in one place.</p>
           </div>
           <div className="hero-actions">
-            <button className="btn btn-secondary" onClick={handleConnectGoogle}>
+            <label className="field-label" htmlFor="active-user-select">
+              Active User
+            </label>
+            <select
+              id="active-user-select"
+              className="control"
+              value={activeUserId || ''}
+              onChange={(event) => setSelectedUserId(Number(event.target.value))}
+              disabled={!users.length}
+            >
+              {users.map((user) => (
+                <option value={user.id} key={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </select>
+
+            <form className="user-form" onSubmit={handleCreateUser}>
+              <input
+                type="text"
+                className="control"
+                value={newUserName}
+                onChange={(event) => setNewUserName(event.target.value)}
+                placeholder="New user name"
+                maxLength={50}
+              />
+              <input
+                type="color"
+                className="color-picker"
+                value={newUserColor}
+                onChange={(event) => setNewUserColor(event.target.value)}
+                aria-label="New user color"
+              />
+              <button className="btn btn-secondary" type="submit" disabled={isCreatingUser}>
+                {isCreatingUser ? 'Adding...' : 'Sign Up User'}
+              </button>
+            </form>
+
+            <button className="btn btn-secondary" onClick={handleConnectGoogle} disabled={!activeUserId}>
               {googleConnected ? 'Reconnect Google' : 'Connect Google Calendar'}
             </button>
-            <button className="btn btn-primary" onClick={handleSyncGoogleCalendar} disabled={isSyncing || !googleConnected}>
+            <button
+              className="btn btn-primary"
+              onClick={handleSyncGoogleCalendar}
+              disabled={isSyncing || !googleConnected || !activeUserId}
+            >
               {isSyncing ? 'Syncing...' : 'Sync Next 30 Days'}
             </button>
+            <p className="status-line">Calendar account: {activeUser ? activeUser.name : 'No user selected'}</p>
             <p className="status-line">{statusMessage}</p>
             {googleConnected && googleEmail ? <p className="status-line">Connected as {googleEmail}</p> : null}
           </div>
@@ -196,7 +309,11 @@ function App() {
             <h3>Family</h3>
             <div className="chips">
               {users.map((user) => (
-                <span key={user.id} className="chip" style={{ '--chip-color': user.color }}>
+                <span
+                  key={user.id}
+                  className={`chip ${activeUserId === user.id ? 'is-active' : ''}`}
+                  style={{ '--chip-color': user.color }}
+                >
                   {user.name}
                 </span>
               ))}

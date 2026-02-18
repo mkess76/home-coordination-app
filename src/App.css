@@ -86,6 +86,39 @@ body {
   align-content: start;
 }
 
+.field-label {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.control {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+  padding: 10px 12px;
+}
+
+.user-form {
+  display: grid;
+  gap: 8px;
+}
+
+.color-picker {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 4px;
+}
+
 .btn {
   border: 0;
   border-radius: 12px;
@@ -197,6 +230,10 @@ body {
   padding: 8px 13px;
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+.chip.is-active {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--chip-color) 65%, white);
 }
 
 .list {

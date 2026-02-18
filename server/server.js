@@ -5,8 +5,10 @@ const https = require('https');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const dotenv = require('dotenv');
 
-require('dotenv').config();
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const app = express();
 const oauthStates = new Map();
@@ -218,6 +220,20 @@ function parseGoogleTokenResponse(responsePayload) {
   };
 }
 
+function parseUserId(rawValue, fallbackValue = null) {
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return fallbackValue;
+  }
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed < 1) return null;
+  return parsed;
+}
+
+async function ensureUserExists(userId) {
+  const existingUser = await getDb('SELECT id FROM users WHERE id = ?', [userId]);
+  return Boolean(existingUser);
+}
+
 function postFormEncoded(url, formPayload) {
   return new Promise((resolve, reject) => {
     const formBody = new URLSearchParams(formPayload).toString();
@@ -399,13 +415,23 @@ setInterval(() => {
   }
 }, 60 * 1000).unref();
 
-app.get('/api/google/oauth/start', (req, res) => {
+app.get('/api/google/oauth/start', async (req, res) => {
   if (!googleOAuthConfigured()) {
     res.status(500).json({ error: 'Google OAuth is not configured on server' });
     return;
   }
 
-  const userId = Number(req.query.user_id) || 1;
+  const userId = parseUserId(req.query.user_id, 1);
+  if (!userId) {
+    res.status(400).json({ error: 'A valid user_id query parameter is required' });
+    return;
+  }
+
+  if (!(await ensureUserExists(userId))) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
   const stateToken = putOAuthState(userId);
   const authUrl = buildGoogleAuthUrl(stateToken);
   res.redirect(authUrl);
@@ -441,8 +467,18 @@ app.get('/api/google/oauth/callback', async (req, res) => {
 });
 
 app.get('/api/google/oauth/status', async (req, res) => {
-  const userId = Number(req.query.user_id) || 1;
+  const userId = parseUserId(req.query.user_id, 1);
+  if (!userId) {
+    res.status(400).json({ error: 'A valid user_id query parameter is required' });
+    return;
+  }
+
   try {
+    if (!(await ensureUserExists(userId))) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
     const row = await getDb(
       `SELECT email, refresh_token, access_token, access_token_expires_at
        FROM google_oauth_tokens
@@ -464,8 +500,18 @@ app.get('/api/google/oauth/status', async (req, res) => {
 });
 
 app.post('/api/google/oauth/disconnect', async (req, res) => {
-  const userId = Number(req.body.user_id) || 1;
+  const userId = parseUserId(req.body.user_id, 1);
+  if (!userId) {
+    res.status(400).json({ error: 'A valid user_id is required' });
+    return;
+  }
+
   try {
+    if (!(await ensureUserExists(userId))) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
     await runDb('DELETE FROM google_oauth_tokens WHERE user_id = ?', [userId]);
     res.json({ disconnected: true });
   } catch (disconnectError) {
@@ -486,14 +532,22 @@ app.get('/api/users', (req, res) => {
 
 app.post('/api/users', (req, res) => {
   const { name, color, profile_image } = req.body;
+  const normalizedName = typeof name === 'string' ? name.trim() : '';
+  const normalizedColor = /^#[0-9A-Fa-f]{6}$/.test(color || '') ? color : '#3B82F6';
+
+  if (!normalizedName) {
+    res.status(400).json({ error: 'Name is required' });
+    return;
+  }
+
   db.run(
     'INSERT INTO users (name, color, profile_image, role) VALUES (?, ?, ?, ?)',
-    [name, color, profile_image || null, 'member'],
+    [normalizedName, normalizedColor, profile_image || null, 'member'],
     function(err) {
       if (err) {
         res.status(500).json({ error: err.message });
       } else {
-        res.json({ id: this.lastID, name, color });
+        res.json({ id: this.lastID, name: normalizedName, color: normalizedColor });
       }
     }
   );
@@ -511,14 +565,24 @@ app.get('/api/events', (req, res) => {
 });
 
 app.get('/api/google-calendar/events', async (req, res) => {
-  const userId = Number(req.query.user_id) || 1;
+  const userId = parseUserId(req.query.user_id, 1);
   const calendarId = req.query.calendarId || 'primary';
   const timeMin = req.query.timeMin || new Date().toISOString();
   const timeMax =
     req.query.timeMax ||
     new Date(new Date().getTime() + 1000 * 60 * 60 * 24 * 30).toISOString();
 
+  if (!userId) {
+    res.status(400).json({ error: 'A valid user_id query parameter is required' });
+    return;
+  }
+
   try {
+    if (!(await ensureUserExists(userId))) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
     const accessToken = await getAccessTokenForRequest(req, userId);
     const googleEvents = await getGoogleEvents(accessToken, timeMin, timeMax, calendarId);
     const normalizedEvents = googleEvents.map(mapGoogleEvent);
@@ -531,13 +595,23 @@ app.get('/api/google-calendar/events', async (req, res) => {
 
 app.post('/api/google-calendar/sync', async (req, res) => {
   const calendarId = req.body.calendarId || 'primary';
-  const userId = Number(req.body.user_id) || 1;
+  const userId = parseUserId(req.body.user_id, 1);
   const timeMin = req.body.timeMin || new Date().toISOString();
   const timeMax =
     req.body.timeMax ||
     new Date(new Date().getTime() + 1000 * 60 * 60 * 24 * 30).toISOString();
 
+  if (!userId) {
+    res.status(400).json({ error: 'A valid user_id is required' });
+    return;
+  }
+
   try {
+    if (!(await ensureUserExists(userId))) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
     const accessToken = await getAccessTokenForRequest(req, userId);
     const googleEvents = await getGoogleEvents(accessToken, timeMin, timeMax, calendarId);
     let imported = 0;
