@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: home-coordination
+  namespace: home-coordination
+  annotations:
+    # NGINX ingress class — matches your cluster's ingress controller
+    kubernetes.io/ingress.class: "nginx"
+
+    # TLS is terminated at Cloudflare edge. The tunnel sends HTTP to the
+    # NGINX ingress controller on VLAN 60 DMZ. No cert-manager annotation
+    # needed here — Cloudflare handles the certificate.
+
+    # Increase proxy timeouts slightly for OAuth redirect flows which can
+    # take a moment to resolve.
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+
+    # Preserve the original Host header so the Node.js server sees
+    # home.rancherlab.org (needed for OAuth redirect URI validation).
+    nginx.ingress.kubernetes.io/proxy-set-headers: "home-coordination/custom-headers"
+spec:
+  rules:
+    - host: home.rancherlab.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: home-coordination
+                port:
+                  number: 80

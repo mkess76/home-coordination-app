@@ -1,0 +1,63 @@
+---
+# Ingress policy: only the NGINX ingress controller (in kube-system or
+# ingress-nginx namespace) may reach port 3001. No other pods can initiate
+# connections to the app.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: home-coordination-ingress
+  namespace: home-coordination
+spec:
+  podSelector:
+    matchLabels:
+      app: home-coordination
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3001
+---
+# Egress policy: the app needs outbound access to:
+#   1. Google OAuth APIs (accounts.google.com, googleapis.com) — port 443
+#   2. DNS resolution — port 53
+#   3. Kubernetes API (for nothing internal, but standard to allow DNS)
+# All other egress is blocked. The UDM-SE firewall rules further constrain
+# which external endpoints are reachable from VLAN 20.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: home-coordination-egress
+  namespace: home-coordination
+spec:
+  podSelector:
+    matchLabels:
+      app: home-coordination
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Google OAuth and Calendar APIs (external HTTPS)
+    - ports:
+        - protocol: TCP
+          port: 443
+    # Vault (for ExternalSecret token refresh, within cluster)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security
+      ports:
+        - protocol: TCP
+          port: 8200

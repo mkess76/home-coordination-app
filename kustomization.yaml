@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - pvc.yaml
+  - externalsecret.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+
+# Image tag automation: Flux Image Automation Controller will update
+# the tag below when a new semver image is pushed to GHCR.
+# Run: flux create image repository home-coordination \
+#   --image=ghcr.io/mkess76/home-coordination-app \
+#   --interval=5m --namespace=flux-system
+images:
+  - name: ghcr.io/mkess76/home-coordination-app
+    newTag: 0.1.0  # {"$imagepolicy": "flux-system:home-coordination:tag"}
