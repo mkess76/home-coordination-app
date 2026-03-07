@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: home-coordination-data
+  namespace: home-coordination
+  annotations:
+    # Longhorn will provision a replicated 2GB volume for the SQLite database
+    # file. RWO is required — SQLite does not support concurrent writers from
+    # multiple pods, which is also why replicas is capped at 1 in the Deployment.
+    volume.beta.kubernetes.io/storage-provisioner: driver.longhorn.io
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 2Gi

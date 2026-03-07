@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: home-coordination
+  namespace: home-coordination
+  labels:
+    app: home-coordination
+spec:
+  # ClusterIP — traffic enters via NGINX Ingress, not a LoadBalancer IP.
+  # The Cloudflare tunnel routes to the NGINX ingress controller which
+  # forwards to this service.
+  type: ClusterIP
+  selector:
+    app: home-coordination
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3001
+      protocol: TCP

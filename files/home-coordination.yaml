@@ -1,0 +1,22 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: home-coordination
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./apps/home-coordination
+  prune: true        # Remove resources from cluster if deleted from Git
+  sourceRef:
+    kind: GitRepository
+    name: flux-system  # Assumes your GitRepository points to rancher-gitops
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: home-coordination
+      namespace: home-coordination
+  timeout: 5m
+  # Wait for the namespace and PVC to exist before applying dependent resources
+  dependsOn:
+    - name: infrastructure-storage    # Longhorn — adjust name to match your flux-system entry
+    - name: infrastructure-security   # Vault + ESO

@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: home-coordination
+  namespace: home-coordination
+  labels:
+    app: home-coordination
+spec:
+  # IMPORTANT: Must stay at 1. SQLite uses a file lock and does not support
+  # concurrent access from multiple pods. Scaling requires migrating to
+  # PostgreSQL (already available at postgresql.data.svc.cluster.local).
+  replicas: 1
+  selector:
+    matchLabels:
+      app: home-coordination
+  strategy:
+    # Recreate (not RollingUpdate) because RWO PVC can only attach to one node
+    # at a time. Rolling update would leave the old pod holding the volume lock
+    # while the new pod tries to mount it, causing a stuck rollout.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: home-coordination
+    spec:
+      serviceAccountName: home-coordination
+
+      # Ensure the pod lands on a node that has the Longhorn volume attached.
+      # With Longhorn replication this is handled automatically.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+
+      containers:
+        - name: app
+          # Pin to a semver tag — update this via Flux Image Automation or
+          # manually after each CI build pushed to GHCR.
+          image: ghcr.io/mkess76/home-coordination-app:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+              name: http
+
+          env:
+            # Non-secret runtime config — safe to store in Git
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3001"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: APP_BASE_URL
+              value: "https://home.rancherlab.org"
+            - name: GOOGLE_REDIRECT_URI
+              value: "https://home.rancherlab.org/api/google/oauth/callback"
+            - name: ALLOWED_ORIGINS
+              value: "https://home.rancherlab.org"
+            # SQLite database file location inside the container.
+            # VERIFY this matches the path in server/server.js or server/db.js.
+            # Common patterns: ./database.db, ./data/database.db, /data/db.sqlite
+            - name: DB_PATH
+              value: "/app/server/data/database.db"
+
+            # Secrets injected from Vault via ExternalSecret
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: home-coordination-secrets
+                  key: GOOGLE_CLIENT_ID
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: home-coordination-secrets
+                  key: GOOGLE_CLIENT_SECRET
+
+          volumeMounts:
+            - name: data
+              mountPath: /app/server/data
+
+          # No /health endpoint is documented in the README. Using TCP probe
+          # as a safe fallback. Add GET /health -> 200 to server.js for a
+          # proper liveness check (see deployment notes below).
+          livenessProbe:
+            tcpSocket:
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # Node writes session/temp files
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: home-coordination-data
+
+      imagePullSecrets:
+        - name: ghcr-pull-secret

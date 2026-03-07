@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: home-coordination
+  labels:
+    # Baseline policy: allows host networking/ports to be blocked but permits
+    # non-root containers without seccomp enforcement. Sufficient for Node.js.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
