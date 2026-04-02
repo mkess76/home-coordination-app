@@ -1,25 +1,9 @@
-FROM node:20-alpine AS frontend-build
+FROM python:3.11-slim
+
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY public ./public
-COPY src ./src
-RUN npm run build
 
-FROM node:20-alpine AS backend-deps
-WORKDIR /app/server
-COPY server/package*.json ./
-RUN npm ci --omit=dev
+COPY . .
 
-FROM node:20-alpine
-WORKDIR /app/server
-ENV NODE_ENV=production
-ENV HOST=0.0.0.0
-ENV PORT=3001
+RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
-COPY --from=backend-deps /app/server/node_modules ./node_modules
-COPY server ./
-COPY --from=frontend-build /app/build ../build
-
-EXPOSE 3001
-CMD ["node", "server.js"]
+CMD [ "python", "-m", "http.server", "8080"]
