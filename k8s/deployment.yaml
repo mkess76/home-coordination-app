@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: home-coordination
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: home-coordination
+  template:
+    metadata:
+      labels:
+        app: home-coordination
+    spec:
+      containers:
+      - name: home-coordination
+        image: your-docker-repo/home-coordination:latest
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
