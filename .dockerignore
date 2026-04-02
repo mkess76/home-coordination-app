@@ -1,0 +1,11 @@
+node_modules
+server/node_modules
+server/family.db
+build
+.git
+.github
+.env
+*.md
+files/
+*.yaml
+DEPLOYMENT_RUNBOOK.sh
