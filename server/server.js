@@ -52,11 +52,65 @@ app.use(
 app.use(express.json());
 
 // Database
-const db = new sqlite3.Database('./family.db', (err) => {
+const db = new sqlite3.Database(process.env.DB_PATH || './family.db', (err) => {
   if (err) {
     console.error('Database connection error:', err);
   } else {
     console.log('✅ Connected to SQLite database');
+    // Auto-initialize schema on fresh database
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#3B82F6',
+        profile_image TEXT,
+        role TEXT NOT NULL DEFAULT 'member',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        start_time DATETIME NOT NULL,
+        end_time DATETIME,
+        all_day INTEGER DEFAULT 0,
+        location TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS chores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        due_date DATE NOT NULL,
+        recurring TEXT DEFAULT 'none',
+        completed INTEGER DEFAULT 0,
+        stars_earned INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS lists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT DEFAULT 'general',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS list_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_id INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        completed INTEGER DEFAULT 0,
+        added_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE,
+        FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+      );
+    `, (err) => {
+      if (err) console.error('Schema init error:', err);
+      else console.log('✅ Database schema initialized');
+    });
   }
 });
 
